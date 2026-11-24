@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interview Copilot</title>
+<style>
+  :root {
+    --bg-rgb: 12, 12, 16;
+    --shadow: 0 1px 2px rgba(0,0,0,.95), 0 0 8px rgba(0,0,0,.7);
+    --panel: rgba(255, 255, 255, 0.05);
+    --line: rgba(255, 255, 255, 0.10);
+    --text: #ecebe6;
+    --muted: #9a988f;
+    --them: #f0c46c;
+    --me: #7fb4ff;
+    --accent: #6fdc9b;
+    --err: #ff7a6b;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --fs: 15px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg-rgb: 250, 249, 245; --shadow: 0 0 3px rgba(255,255,255,.95), 0 0 8px rgba(255,255,255,.7); --panel: rgba(0,0,0,0.04); --line: rgba(0,0,0,0.10);
+      --text: #1d1c19; --muted: #6b6960; --them: #9a6a00; --me: #2a62c9; --accent: #1d8a4f; --err: #c0392b;
+    }
+  }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: transparent; }
+  body {
+    font: var(--fs)/1.45 var(--font); color: var(--text);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .shell {
+    flex: 1; display: flex; flex-direction: column; min-height: 0;
+    background: rgba(var(--bg-rgb), var(--bg-a, 0.4)); border: 1px solid var(--line); border-radius: 14px;
+    overflow: hidden; text-shadow: var(--shadow);
+  }
+  header {
+    display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+    border-bottom: 1px solid var(--line); -webkit-app-region: drag; cursor: grab; flex-wrap: wrap;
+  }
+  header .grow { flex: 1; min-width: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; transition: background .15s; }
+  .dot.them { background: var(--them); } .dot.me { background: var(--me); }
+  .dot.err { background: var(--err); }
+  .lbl { font-size: 11px; color: var(--muted); }
+  select, button, input[type=text], textarea {
+    font: 12px var(--font); color: var(--text); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 7px; padding: 3px 7px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button#stop { min-width: 84px; font-weight: 600; }
+  button#stop.paused { background: var(--accent); color: #0b1a10; border-color: transparent; }
+  body.is-paused .shell { border-color: var(--err); }
+  button.win { padding: 1px 7px; font-size: 14px; line-height: 1.1; }
+  button.primary { background: var(--accent); color: #0b1a10; border-color: transparent; font-weight: 600; }
+  button.on { border-color: var(--accent); color: var(--accent); }
+  .meter { width: 26px; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: currentColor; transition: width .2s; }
+
+  #transcript {
+    flex: 0 0 auto; max-height: 62px; overflow-y: auto; padding: 4px 12px;
+    font-size: 12px; color: var(--muted); border-top: 1px solid var(--line);
+  }
+  #transcript .ln { margin: 1px 0; }
+  #transcript .ln b { font-weight: 600; margin-right: 4px; }
+  #transcript .them b { color: var(--them); } #transcript .me b { color: var(--me); }
+  #transcript .partial { opacity: .75; font-style: italic; }
+  #transcript .excluded { opacity: .35; }
+
+  #answerWrap { flex: 1; overflow-y: auto; padding: 8px 14px 12px; min-height: 0; }
+  .q { font-size: 11.5px; color: var(--them); margin-bottom: 4px;
+       display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  #answer > p:first-child { font-size: 1.1em; }
+  .meta { font-size: 11px; color: var(--muted); margin-top: 8px; }
+  #answer { font-size: var(--fs); }
+  #answer p { margin: 0 0 6px; }
+  #answer strong { color: var(--text); font-weight: 650; }
+  #answer ul { margin: 4px 0 6px 18px; padding: 0; }
+  #answer li { margin: 2px 0; }
+  #answer code { font-family: var(--mono); font-size: .9em; background: var(--panel); padding: 0 4px; border-radius: 4px; }
+  #answer pre { font-family: var(--mono); font-size: 12.5px; background: var(--panel); padding: 8px; border-radius: 8px; overflow-x: auto; margin: 6px 0; }
+  #answer pre code { background: none; padding: 0; }
+  .empty { color: var(--muted); font-size: 13px; }
+  .err { color: var(--err); font-size: 12.5px; }
+  .history { border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 8px; opacity: .55; font-size: 13px; }
+
+  footer { display: flex; gap: 6px; padding: 7px 10px; border-top: 1px solid var(--line); }
+  footer input { flex: 1; min-width: 0; }
+  #profileBox { display: none; padding: 8px 10px; border-top: 1px solid var(--line); }
+  #profileBox textarea { width: 100%; height: 140px; font-family: var(--mono); resize: vertical; }
+  .row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+  .kbd { font: 10.5px var(--mono); color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <span class="dot" id="dotThem" title="Interviewer (system audio)"></span>
+    <span class="meter" style="color:var(--them)"><i id="lvThem"></i></span>
+    <span class="dot" id="dotMe" title="You (microphone)"></span>
+    <span class="meter" style="color:var(--me)"><i id="lvMe"></i></span>
+    <span class="grow"></span>
+    <select id="backend" title="Backend">
+      <option value="claude">Claude</option>
+      <option value="codex">Codex</option>
+    </select>
+    <select id="model" title="Model"></select>
+    <button id="auto" title="Answer automatically when the interviewer pauses">Auto</button>
+    <button id="answerBtn" class="primary" title="Answer now (⌃⌥A)">Answer</button>
+    <button id="more" title="Background / settings">⋯</button>
+    <button id="hideBtn" class="win" title="Hide now (⌃⌥H shows it again)">–</button>
+    <button id="quitBtn" class="win" title="Quit the copilot">×</button>
+  </header>
+
+  <div id="answerWrap">
+    <div id="current"><div class="empty">Listening… answers appear here when the interviewer finishes a question.<br><span class="kbd">⌃⌥A answer now · ⌃⌥H hide/show · ⌃⌥C clear</span></div></div>
+    <div id="hist"></div>
+  </div>
+
+  <div id="transcript"></div>
+
+  <div id="profileBox">
+    <div class="lbl">Your background (resume highlights, target role, job description). Sent with every question.</div>
+    <textarea id="profile" placeholder="Name, current role, years of experience, key projects with numbers, tech stack, the job description…"></textarea>
+    <div class="row">
+      <button id="saveProfile">Save</button>
+      <span class="lbl">Pause before answering</span>
+      <input type="text" id="silence" style="width:50px" title="ms of silence before auto-answer">
+      <span class="lbl">ms</span>
+      <button id="listenMe" title="Include your own speech in the transcript">My mic</button>
+      <button id="clear">Clear</button>
+      <button id="theme">Theme</button>
+      <span class="lbl">Background</span>
+      <input type="range" id="opacity" min="0" max="95" value="40" style="width:90px" title="Background opacity (⌃⌥= / ⌃⌥-)">
+    </div>
+  </div>
+
+  <footer>
+    <input type="text" id="ask" placeholder="Type a question (Enter) — or let it listen">
+    <button id="stop" title="Pause / resume answering (⌃⌥S)">⏸ Pause</button>
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let settings = {}, models = {claude: [], codex: []};
+let finals = [], partial = {them: "", me: ""};
+let cur = null;  // answer on screen {gen, question, text, meta}
+let pend = null; // auto answer still streaming, not yet shown
+function target(gen) { if (pend && pend.gen === gen) return pend; if (cur && cur.gen === gen) return cur; return null; }
+function promote() {
+  if (cur && cur.text.trim() && cur.text.trim() !== "NO_QUESTION") pushHistory(cur);
+  cur = pend; pend = null; renderAnswer(); $("answerWrap").scrollTop = 0;
+}
+
+function post(path, body) {
+  return fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
+}
+
+// ---------- tiny markdown renderer (bold, code, bullets, code fences)
+function esc(s) { return s.replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c])); }
+function inline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+}
+function md(src) {
+  const out = []; const lines = src.split("\n"); let inList = false, inCode = false, code = [];
+  for (const raw of lines) {
+    if (raw.trim().startsWith("```")) {
+      if (inCode) { out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>"); code = []; inCode = false; }
+      else { if (inList) { out.push("</ul>"); inList = false; } inCode = true; }
+      continue;
+    }
+    if (inCode) { code.push(raw); continue; }
+    const m = raw.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
+    if (m) { if (!inList) { out.push("<ul>"); inList = true; } out.push("<li>" + inline(m[1]) + "</li>"); continue; }
+    if (inList) { out.push("</ul>"); inList = false; }
+    if (raw.trim()) out.push("<p>" + inline(raw) + "</p>");
+  }
+  if (inCode) out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>");
+  if (inList) out.push("</ul>");
+  return out.join("");
+}
+
+// ---------- rendering
+function renderTranscript() {
+  const el = $("transcript");
+  const rows = finals.slice(-14).map(f =>
+    `<div class="ln ${f.src}${f.paused ? " excluded" : ""}" ${f.paused ? 'title="heard while paused — not used for auto answers"' : ""}><b>${f.paused ? "⏸ " : ""}${f.src === "them" ? "Them" : "Me"}</b>${esc(f.text)}</div>`);
+  for (const s of ["them", "me"]) if (partial[s])
+    rows.push(`<div class="ln ${s} partial"><b>${s === "them" ? "Them" : "Me"}</b>${esc(partial[s])}</div>`);
+  el.innerHTML = rows.join("") || `<div class="ln">No speech yet.</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+function renderAnswer() {
+  if (!cur) return;
+  const text = cur.text.trim();
+  let html = "";
+  if (cur.question) html += `<div class="q">Q: ${esc(cur.question)}</div>`;
+  if (text === "NO_QUESTION") html += `<div class="empty">(no question detected — press Answer to force one)</div>`;
+  else html += `<div id="answer">${text ? md(text) : '<span class="empty">thinking…</span>'}</div>`;
+  if (cur.note) html += `<div class="err">${esc(cur.note)}</div>`;
+  if (cur.error) html += `<div class="err">${esc(cur.error)}</div>`;
+  if (cur.meta) html += `<div class="meta">${esc(cur.meta)}</div>`;
+  $("current").innerHTML = html;
+}
+function pushHistory(a) {
+  if (!a || !a.text.trim() || a.text.trim() === "NO_QUESTION") return;
+  const d = document.createElement("div");
+  d.className = "history";
+  d.innerHTML = (a.question ? `<div class="q">Q: ${esc(a.question)}</div>` : "") + md(a.text);
+  $("hist").prepend(d);
+  while ($("hist").children.length > 6) $("hist").lastChild.remove();
+}
+function renderSettings() {
+  $("backend").value = settings.backend;
+  const list = models[settings.backend] || [];
+  const curModel = settings.backend === "codex" ? settings.codex_model : settings.claude_model;
+  $("model").innerHTML = list.map(m => `<option ${m === curModel ? "selected" : ""}>${m}</option>`).join("");
+  $("auto").classList.toggle("on", !!settings.auto);
+  $("stop").textContent = settings.auto ? "⏸ Pause" : "▶ Resume";
+  $("stop").classList.toggle("paused", !settings.auto);
+  document.body.classList.toggle("is-paused", !settings.auto);
+  $("listenMe").classList.toggle("on", !!settings.listen_me);
+  $("silence").value = settings.silence_ms;
+}
+function setStatus(src, value) {
+  const dot = src === "them" ? $("dotThem") : src === "me" ? $("dotMe") : null;
+  if (!dot) return;
+  dot.classList.toggle("err", value === "error");
+  dot.title = (src === "them" ? "Interviewer (system audio): " : "You (mic): ") + value;
+}
+
+// ---------- events
+function connect() {
+  const es = new EventSource("/events");
+  es.onmessage = (m) => {
+    const e = JSON.parse(m.data);
+    switch (e.type) {
+      case "snapshot":
+        finals = e.finals; partial = e.partial; settings = e.settings; models = e.models;
+        renderSettings(); renderTranscript();
+        for (const [k, v] of Object.entries(e.status || {})) setStatus(k, v);
+        break;
+      case "settings": settings = e.settings; renderSettings(); break;
+      case "partial": partial[e.src] = e.text; renderTranscript(); break;
+      case "final": finals.push(e); partial[e.src] = ""; renderTranscript(); break;
+      case "level": {
+        const pct = Math.min(100, Math.sqrt(e.rms) * 400);
+        (e.src === "them" ? $("lvThem") : $("lvMe")).style.width = pct + "%";
+        const dot = e.src === "them" ? $("dotThem") : $("dotMe");
+        dot.classList.toggle(e.src, e.rms > 0.004);
+        break;
+      }
+      case "status": setStatus(e.src, e.value); break;
+      case "answer_start":
+        // hold auto answers back until they contain a real answer (not NO_QUESTION),
+        // so interviewer small talk never wipes the answer you're reading
+        pend = {gen: e.gen, question: e.question, text: "", meta: `${e.backend} · ${e.model}`};
+        if (e.reason === "manual") promote();
+        break;
+      case "answer_delta": {
+        const a = target(e.gen); if (!a) break;
+        a.text += e.text;
+        if (a === pend) { const tx = a.text.trim(); if (tx && !"NO_QUESTION".startsWith(tx)) promote(); }
+        else renderAnswer();
+        break;
+      }
+      case "answer_question": {
+        const a = target(e.gen);
+        if (a) { a.question = e.text; a.meta += ` · whisper ${e.whisper_s}s`; if (a === cur) renderAnswer(); }
+        break;
+      }
+      case "answer_note": { const a = target(e.gen); if (a) { a.note = e.text; if (a === cur) renderAnswer(); } break; }
+      case "answer_done": {
+        const a = target(e.gen); if (!a) break;
+        a.meta += ` · first words ${e.first_token_s}s · done ${e.total_s}s`;
+        if (a === pend) pend = null; else renderAnswer();
+        break;
+      }
+      case "answer_error": { const a = target(e.gen); if (!a) break; a.error = e.text; if (a === pend) promote(); else renderAnswer(); break; }
+      case "answer_cancelled":
+        if (pend) pend = null;
+        else if (cur && !cur.stopped && !/ · done /.test(cur.meta)) {
+          cur.stopped = true;
+          cur.meta += e.manual ? " · stopped" : " · cancelled (still talking)";
+          renderAnswer();
+        }
+        break;
+      case "error":
+        setStatus(e.src, "error");
+        $("current").insertAdjacentHTML("beforeend", `<div class="err">${esc(e.src)}: ${esc(e.text)}</div>`);
+        break;
+      case "info":
+        $("current").insertAdjacentHTML("beforeend", `<div class="meta">${esc(e.text)}</div>`); break;
+    }
+  };
+  es.onerror = () => { es.close(); setTimeout(connect, 1000); };
+}
+
+// ---------- controls
+$("backend").onchange = () => post("/settings", {backend: $("backend").value});
+$("model").onchange = () => post("/settings", settings.backend === "codex" ? {codex_model: $("model").value} : {claude_model: $("model").value});
+$("auto").onclick = () => post("/settings", {auto: !settings.auto});
+$("listenMe").onclick = () => post("/settings", {listen_me: !settings.listen_me});
+$("silence").onchange = () => post("/settings", {silence_ms: Math.max(300, parseInt($("silence").value) || 1000)});
+$("answerBtn").onclick = () => post("/answer");
+function togglePause() { post("/settings", {auto: !settings.auto}); }
+$("stop").onclick = togglePause;
+$("clear").onclick = () => { post("/clear"); $("hist").innerHTML = ""; };
+$("ask").onkeydown = (ev) => {
+  if (ev.key === "Enter" && $("ask").value.trim()) { post("/answer", {question: $("ask").value.trim()}); $("ask").value = ""; }
+};
+$("more").onclick = async () => {
+  const box = $("profileBox"); const show = box.style.display !== "block";
+  box.style.display = show ? "block" : "none";
+  if (show) { const r = await fetch("/profile"); $("profile").value = (await r.json()).text; }
+};
+$("saveProfile").onclick = async () => { await post("/profile", {text: $("profile").value}); $("saveProfile").textContent = "Saved"; setTimeout(() => $("saveProfile").textContent = "Save", 1200); };
+$("theme").onclick = () => {
+  const r = document.documentElement; const t = r.getAttribute("data-theme");
+  const next = t === "dark" ? "light" : "dark"; r.setAttribute("data-theme", next);
+  try { localStorage.setItem("theme", next); } catch (e) {}
+};
+try { const t = localStorage.getItem("theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+
+// background opacity (text stays crisp); remembered per machine
+function setBg(v) {
+  v = Math.max(0, Math.min(95, Math.round(v)));
+  document.documentElement.style.setProperty("--bg-a", (v / 100).toFixed(2));
+  $("opacity").value = v;
+  try { localStorage.setItem("bgOpacity", String(v)); } catch (e) {}
+}
+$("opacity").oninput = () => setBg(+$("opacity").value);
+try { const v = localStorage.getItem("bgOpacity"); setBg(v === null ? 60 : +v); } catch (e) { setBg(60); }
+
+// window controls via the native overlay (no-ops in a normal browser)
+function native(msg) { try { window.webkit.messageHandlers.win.postMessage(msg); return true; } catch (e) { return false; } }
+document.querySelector("header").addEventListener("mousedown", (ev) => {
+  if (ev.button !== 0 || ev.target.closest("button, select, input, textarea, option")) return;
+  if (native("drag")) ev.preventDefault();
+});
+$("hideBtn").onclick = () => native("hide");
+$("quitBtn").onclick = () => { if (!native("quit")) post("/quit"); };
+
+// hotkey bridge from the native overlay
+window.copilot = {
+  togglePause,
+  bg: (delta) => setBg(+$("opacity").value + delta),
+  answer: () => post("/answer"),
+  clear: () => { post("/clear"); $("hist").innerHTML = ""; },
+};
+connect();
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+# personal / local
+profile.md
+PROJECT_REPORT.md
+.work/
+__pycache__/
+*.bak
+*.prev
+.DS_Store
+
+# large or build outputs
+models/
+listener/listener
+listener/_CodeSignature/
+overlay/overlay
